@@ -1,0 +1,226 @@
+:root {
+    --primary: #2c3e50;
+    --accent: #27ae60;
+    --bg: #ecf0f1;
+    --card-bg: #ffffff;
+    --text: #333;
+    --danger: #c0392b;
+    --warning: #f39c12;
+}
+
+body {
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 20px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--primary);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+button {
+    cursor: pointer;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 15px;
+    font-weight: bold;
+    transition: background 0.3s;
+}
+
+#btnConectar {
+    background-color: var(--accent);
+    color: white;
+}
+
+#btnConectar:hover {
+    background-color: #219150;
+}
+
+.desconectado {
+    color: #e74c3c;
+    font-weight: bold;
+}
+.conectado {
+    color: #2ecc71;
+    font-weight: bold;
+}
+
+main {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+@media (min-width: 768px) {
+    main {
+        grid-template-columns: 1fr 1fr;
+    }
+    .dados-real {
+        grid-column: 1 / -1;
+    } /* Ocupa toda a largura */
+}
+
+.card {
+    background: var(--card-bg);
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+h2 {
+    margin-top: 0;
+    color: var(--primary);
+    border-bottom: 2px solid var(--bg);
+    padding-bottom: 10px;
+}
+
+.grid-dados {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.dado-item {
+    background: var(--bg);
+    padding: 15px;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 1.1em;
+    font-weight: bold;
+}
+
+.dado-item span {
+    color: var(--accent);
+    font-size: 1.3em;
+}
+
+.status-barra {
+    text-align: center;
+    padding: 10px;
+    border-radius: 4px;
+    font-weight: bold;
+    background-color: #bdc3c7;
+}
+
+/* Cores de status baseadas no hardware */
+.status-vazio {
+    background-color: #bdc3c7;
+    color: #333;
+}
+.status-bom {
+    background-color: #2ecc71;
+    color: white;
+}
+.status-alerta {
+    background-color: #f1c40f;
+    color: #333;
+}
+.status-podre {
+    background-color: #e74c3c;
+    color: white;
+    animation: pisca 1s infinite;
+}
+
+@keyframes pisca {
+    50% {
+        opacity: 0.5;
+    }
+}
+
+form label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    margin-top: 10px;
+}
+form input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box; /* Garante que padding não aumente largura */
+}
+
+.row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+.row div {
+    flex: 1;
+}
+
+.botoes-form {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+.btn-salvar {
+    background-color: var(--primary);
+    color: white;
+    width: 100%;
+}
+.btn-salvar:hover {
+    background-color: #1a252f;
+}
+.btn-cancelar {
+    background-color: #95a5a6;
+    color: white;
+}
+
+ul {
+    list-style: none;
+    padding: 0;
+}
+li {
+    background: var(--bg);
+    margin-bottom: 10px;
+    padding: 15px;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: transform 0.2s;
+}
+
+li:hover {
+    transform: translateX(5px);
+    border-left: 4px solid var(--accent);
+}
+
+.info-config strong {
+    color: var(--primary);
+    font-size: 1.1em;
+}
+.info-config div {
+    font-size: 0.9em;
+    color: #666;
+}
+
+.acoes-config button {
+    margin-left: 5px;
+    padding: 5px 10px;
+    font-size: 0.8em;
+}
+.btn-usar {
+    background-color: var(--accent);
+    color: white;
+}
+.btn-editar {
+    background-color: var(--warning);
+    color: white;
+}
+.btn-excluir {
+    background-color: var(--danger);
+    color: white;
+}
