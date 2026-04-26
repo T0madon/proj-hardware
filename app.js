@@ -4,17 +4,15 @@
 
 const STORAGE_KEY = "fruteira_configs";
 
-// Limites Ativos: Como a resistência (Rs/R0) CAI quando o gás sobe, os limites funcionam de forma inversa.
-// Valores menores que o limite indicam MAIS gás.
-let limitesAtivos = {
-    bom: 0.95, // Acima de 0.95 = Bom
-    alerta: 0.85, // Entre 0.85 e 0.95 = Amadurecendo. Abaixo de 0.85 = Apodrecendo.
-};
+// Estado Dinâmico
+let limiteAtivo = 5.0; // Agora: ACIMA disso = Ruim
+let perfilAtivoNome = "Padrão";
 
 let intervaloFetch = null;
 let ipDoEsp = "";
+let ultimoLogTempo = 0; // Controle dos 30s do histórico
 
-// Elementos do DOM - Monitor
+// Elementos do DOM
 const btnConectar = document.getElementById("btnConectar");
 const txtStatusConexao = document.getElementById("statusConexao");
 const inputIp = document.getElementById("ipEsp");
@@ -24,47 +22,63 @@ const elUmid = document.getElementById("valUmid");
 const elGas = document.getElementById("valGas");
 const elAlc = document.getElementById("valAlc");
 const elStatusBarra = document.getElementById("statusFruta");
+const lblPerfilAtivo = document.getElementById("lblPerfilAtivo");
+const tabelaLogs = document.getElementById("tabelaLogs");
 
-// Elementos do DOM - CRUD
+// Elementos CRUD
 const form = document.getElementById("crudForm");
 const inputId = document.getElementById("configId");
 const inputNome = document.getElementById("nomePerfil");
-const inputGasBom = document.getElementById("limiteGasBom");
-const inputGasAlerta = document.getElementById("limiteGasAlerta");
+const inputGas = document.getElementById("limiteGas");
 const listaUl = document.getElementById("listaConfigs");
 const tituloForm = document.getElementById("tituloForm");
 const btnCancelar = document.getElementById("btnCancelar");
 
+// Configuração do Gráfico (Chart.js)
+const ctx = document.getElementById("graficoRazao").getContext("2d");
+const grafico = new Chart(ctx, {
+    type: "line",
+    data: {
+        labels: [], // Eixo X (Horários)
+        datasets: [
+            {
+                label: "Razão Gás/Kg",
+                data: [], // Eixo Y (Valores)
+                borderColor: "#27ae60",
+                backgroundColor: "rgba(39, 174, 96, 0.2)",
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3,
+            },
+        ],
+    },
+    options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true } },
+        animation: false, // Desliga animação para não piscar a cada 2s
+    },
+});
+
 // ==========================================
-// 2. LÓGICA DE CONEXÃO WI-FI (POLLING)
+// 2. LÓGICA DE CONEXÃO E PROCESSAMENTO
 // ==========================================
 
 function alternarConexao() {
     if (intervaloFetch) {
-        // Desconectar
         clearInterval(intervaloFetch);
         intervaloFetch = null;
         txtStatusConexao.textContent = "Desconectado";
         txtStatusConexao.className = "desconectado";
         btnConectar.textContent = "📡 Conectar Wi-Fi";
-        btnConectar.style.backgroundColor = "var(--accent)";
         inputIp.disabled = false;
     } else {
-        // Conectar
         ipDoEsp = inputIp.value.trim();
-        if (!ipDoEsp) {
-            alert("Por favor, digite o endereço IP do ESP32.");
-            return;
-        }
+        if (!ipDoEsp) return alert("Digite o IP do ESP32.");
 
         txtStatusConexao.textContent = "Conectando...";
-        txtStatusConexao.className = "alerta"; // Pode criar essa classe amarela no CSS se quiser
         btnConectar.textContent = "🛑 Desconectar";
-        btnConectar.style.backgroundColor = "var(--danger)";
         inputIp.disabled = true;
 
-        // Inicia requisições a cada 2 segundos para atualizar a interface rapidamente
-        // (Lembrando que o ESP32 recalcula as médias a cada 10s internamente)
         buscarDadosHardware();
         intervaloFetch = setInterval(buscarDadosHardware, 2000);
     }
@@ -73,77 +87,119 @@ function alternarConexao() {
 async function buscarDadosHardware() {
     try {
         const resposta = await fetch(`http://${ipDoEsp}/dados`);
-        if (!resposta.ok) throw new Error("Falha na resposta do hardware");
-
+        if (!resposta.ok) throw new Error("Falha");
         const dados = await resposta.json();
         processarDados(dados);
-
         txtStatusConexao.textContent = "Conectado";
         txtStatusConexao.className = "conectado";
     } catch (erro) {
-        console.error("Erro na leitura Wi-Fi:", erro);
         txtStatusConexao.textContent = "Falha na Rede";
         txtStatusConexao.className = "desconectado";
     }
 }
 
 function processarDados(dados) {
-    // Atualiza a tela com dados brutos
-    elPeso.textContent = dados.peso.toFixed(1);
+    // 1. MATEMÁTICA INVERTIDA E PROPORCIONAL
+    let pesoKg = dados.peso / 1000; // ESP manda em gramas
+    let razaoGas = 0;
+    let razaoAlcool = 0;
+
+    if (pesoKg >= 0.05) {
+        // Só calcula se tiver pelo menos 50g de fruta
+        // Inverte a leitura (1/leitura) e divide pelo peso
+        razaoGas = 1 / dados.etileno / pesoKg;
+        razaoAlcool = 1 / dados.alcool / pesoKg;
+    }
+
+    // 2. Atualiza a tela
+    elPeso.textContent = pesoKg.toFixed(2);
     elTemp.textContent = dados.temp.toFixed(1);
     elUmid.textContent = dados.umid.toFixed(1);
-    elGas.textContent = dados.etileno.toFixed(3);
-    elAlc.textContent = dados.alcool.toFixed(3);
+    elGas.textContent = razaoGas.toFixed(2);
+    elAlc.textContent = razaoAlcool.toFixed(2);
 
-    // Delega a avaliação para a inteligência da interface
-    atualizarStatusVisual(dados);
+    // 3. Avalia o Status
+    const statusAtual = atualizarStatusVisual(pesoKg, razaoGas, razaoAlcool);
+
+    // 4. Atualiza o Gráfico (Eixo X = Hora, Eixo Y = Razão Gás)
+    atualizarGrafico(razaoGas);
+
+    // 5. Registra Histórico a cada 30 segundos
+    const agora = Date.now();
+    if (agora - ultimoLogTempo >= 30000) {
+        registrarLog(pesoKg, razaoGas, statusAtual);
+        ultimoLogTempo = agora;
+    }
 }
 
-function atualizarStatusVisual(dados) {
+function atualizarStatusVisual(pesoKg, razaoGas, razaoAlcool) {
     elStatusBarra.className = "status-barra";
     let mensagem = "";
     let classeCor = "";
 
-    // LÓGICA DE NEGÓCIO AGORA RESIDE AQUI NA INTERFACE
-    // Atenção à lógica inversa do sensor: Valores MENORES indicam MAIS gás presente.
-
-    if (dados.peso < 5.0) {
+    if (pesoKg < 0.05) {
         mensagem = "Status: Sem frutas";
         classeCor = "status-vazio";
-    } else if (dados.alcool < 0.85) {
-        // Regra de segurança dura (hard-coded): Se tiver muito álcool, independentemente do etileno
-        mensagem = "ALERTA: Fermentação/Álcool detectado!";
+    } else if (razaoAlcool > 15.0) {
+        // Alerta Fixo de fermentação
+        mensagem = "ALERTA: Fermentação detectada!";
         classeCor = "status-podre";
     } else {
-        // Regra de etileno baseada nos inputs dinâmicos do CRUD do usuário
-        if (dados.etileno >= limitesAtivos.bom) {
-            mensagem = "Status: Ar limpo / Frutas boas";
+        // AGORA É PROPORCIONAL: Acima do limite é ruim.
+        if (razaoGas <= limiteAtivo) {
+            mensagem = "Status: Frutas em bom estado";
             classeCor = "status-bom";
-        } else if (dados.etileno >= limitesAtivos.alerta) {
-            mensagem = "Status: Maturação ativa (Amadurecendo)";
-            classeCor = "status-alerta";
-            if (dados.peso < 50) mensagem += " - Fruteira quase vazia";
         } else {
-            mensagem = "STATUS: ATENÇÃO! Limite crítico de gás atingido!";
+            mensagem = "STATUS: Limite de Gás Excedido! (Apodrecendo)";
             classeCor = "status-podre";
         }
     }
 
     elStatusBarra.textContent = mensagem;
     elStatusBarra.classList.add(classeCor);
+    return mensagem; // Retorna para salvar no Log
+}
+
+function atualizarGrafico(valorRazao) {
+    const hora = new Date().toLocaleTimeString();
+
+    grafico.data.labels.push(hora);
+    grafico.data.datasets[0].data.push(valorRazao);
+
+    // Mantém no máximo os últimos 20 pontos no gráfico
+    if (grafico.data.labels.length > 20) {
+        grafico.data.labels.shift();
+        grafico.data.datasets[0].data.shift();
+    }
+    grafico.update();
+}
+
+function registrarLog(peso, razaoGas, status) {
+    const hora = new Date().toLocaleTimeString();
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid #eee";
+    tr.innerHTML = `
+        <td style="padding: 5px;">${hora}</td>
+        <td>${perfilAtivoNome}</td>
+        <td>${peso.toFixed(2)}</td>
+        <td>${razaoGas.toFixed(2)}</td>
+        <td>${status}</td>
+    `;
+
+    // Adiciona no topo da tabela
+    tabelaLogs.insertBefore(tr, tabelaLogs.firstChild);
 }
 
 // ==========================================
-// 3. LÓGICA DO CRUD (Mantida igual, com parseFloat em vez de parseInt)
+// 3. LÓGICA DO CRUD
 // ==========================================
 
 function obterConfigsDoBanco() {
-    const dados = localStorage.getItem(STORAGE_KEY);
-    return dados ? JSON.parse(dados) : [];
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
 }
 
-function salvarNoBanco(listaConfigs) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(listaConfigs));
+function salvarNoBanco(lista) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(lista));
 }
 
 function renderizarLista() {
@@ -152,58 +208,35 @@ function renderizarLista() {
 
     configs.forEach((conf) => {
         const li = document.createElement("li");
-
-        const divInfo = document.createElement("div");
-        divInfo.className = "info-config";
-        divInfo.innerHTML = `
-            <strong>${conf.nome}</strong>
-            <div>Limites Gás: Bom >= ${conf.gasBom} | Alerta >= ${conf.gasAlerta}</div>
+        li.innerHTML = `
+            <div class="info-config">
+                <strong>${conf.nome}</strong>
+                <div>Razão Gás Máxima: ${conf.limiteGas}</div>
+            </div>
+            <div class="acoes-config">
+                <button class="btn-usar" onclick='ativarConfiguracao(${JSON.stringify(conf)})'>Ativar</button>
+                <button class="btn-editar" onclick='carregarNoFormulario(${JSON.stringify(conf)})'>Editar</button>
+                <button class="btn-excluir" onclick='excluirConfig(${conf.id})'>Excluir</button>
+            </div>
         `;
-
-        const divAcoes = document.createElement("div");
-        divAcoes.className = "acoes-config";
-
-        const btnUsar = document.createElement("button");
-        btnUsar.textContent = "Ativar";
-        btnUsar.className = "btn-usar";
-        btnUsar.onclick = () => ativarConfiguracao(conf);
-
-        const btnEdit = document.createElement("button");
-        btnEdit.textContent = "Editar";
-        btnEdit.className = "btn-editar";
-        btnEdit.onclick = () => carregarNoFormulario(conf);
-
-        const btnExcluir = document.createElement("button");
-        btnExcluir.textContent = "Excluir";
-        btnExcluir.className = "btn-excluir";
-        btnExcluir.onclick = () => excluirConfig(conf.id);
-
-        divAcoes.appendChild(btnUsar);
-        divAcoes.appendChild(btnEdit);
-        divAcoes.appendChild(btnExcluir);
-
-        li.appendChild(divInfo);
-        li.appendChild(divAcoes);
         listaUl.appendChild(li);
     });
 }
 
-function salvarFormulario(event) {
-    event.preventDefault();
-
+function salvarFormulario(e) {
+    e.preventDefault();
     const id = inputId.value;
     const configData = {
         nome: inputNome.value,
-        gasBom: parseFloat(inputGasBom.value),
-        gasAlerta: parseFloat(inputGasAlerta.value),
+        limiteGas: parseFloat(inputGas.value),
     };
 
     const configs = obterConfigsDoBanco();
 
     if (id) {
         configData.id = parseInt(id);
-        const index = configs.findIndex((conf) => conf.id === configData.id);
-        if (index !== -1) configs[index] = configData;
+        const idx = configs.findIndex((c) => c.id === configData.id);
+        if (idx > -1) configs[idx] = configData;
     } else {
         configData.id = Date.now();
         configs.push(configData);
@@ -217,8 +250,7 @@ function salvarFormulario(event) {
 function carregarNoFormulario(config) {
     inputId.value = config.id;
     inputNome.value = config.nome;
-    inputGasBom.value = config.gasBom;
-    inputGasAlerta.value = config.gasAlerta;
+    inputGas.value = config.limiteGas;
     tituloForm.textContent = `Editando: ${config.nome}`;
     btnCancelar.style.display = "block";
 }
@@ -231,10 +263,9 @@ function cancelarEdicao() {
 }
 
 function excluirConfig(id) {
-    if (confirm("Tem certeza que deseja excluir este perfil?")) {
-        const configs = obterConfigsDoBanco();
-        const listaNova = configs.filter((conf) => conf.id !== id);
-        salvarNoBanco(listaNova);
+    if (confirm("Excluir este perfil?")) {
+        const configs = obterConfigsDoBanco().filter((c) => c.id !== id);
+        salvarNoBanco(configs);
         renderizarLista();
     }
 }
@@ -244,13 +275,10 @@ function excluirConfig(id) {
 // ==========================================
 
 function ativarConfiguracao(config) {
-    limitesAtivos = {
-        bom: config.gasBom,
-        alerta: config.gasAlerta,
-    };
-    alert(
-        `Limites ativados para avaliar o sensor!\nValores configurados: Bom >= ${config.gasBom} | Alerta >= ${config.gasAlerta}`,
-    );
+    limiteAtivo = config.limiteGas;
+    perfilAtivoNome = config.nome;
+    lblPerfilAtivo.textContent = `${config.nome} (Razão Max: ${config.limiteGas})`;
+    alert(`Perfil ${config.nome} ativado!`);
 }
 
 // ==========================================
@@ -260,5 +288,4 @@ function ativarConfiguracao(config) {
 btnConectar.addEventListener("click", alternarConexao);
 form.addEventListener("submit", salvarFormulario);
 btnCancelar.addEventListener("click", cancelarEdicao);
-
 renderizarLista();

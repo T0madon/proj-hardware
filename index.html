@@ -5,6 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Monitor de Frutas Inteligente</title>
         <link rel="stylesheet" href="style.css" />
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     </head>
     <body>
         <header>
@@ -25,6 +26,22 @@
         </header>
 
         <main>
+            <div
+                style="
+                    grid-column: 1 / -1;
+                    background: var(--primary);
+                    color: white;
+                    padding: 10px 20px;
+                    border-radius: 8px;
+                    font-size: 1.2em;
+                "
+            >
+                Perfil Ativo:
+                <strong id="lblPerfilAtivo" style="color: var(--accent)"
+                    >Nenhum (Modo Padrão)</strong
+                >
+            </div>
+
             <section class="card dados-real">
                 <h2>Dados Atualizados do Hardware</h2>
                 <div class="grid-dados">
@@ -38,14 +55,18 @@
                         Umidade: <span id="valUmid">0</span> %
                     </div>
                     <div class="dado-item">
-                        Índice Gás: <span id="valGas">0</span>
+                        Razão Gás/Kg: <span id="valGas">0</span>
                     </div>
                     <div class="dado-item">
-                        Índice Álcool: <span id="valAlc">0</span>
+                        Razão Álcool/Kg: <span id="valAlc">0</span>
                     </div>
                 </div>
                 <div id="statusFruta" class="status-barra">
                     Aguardando dados...
+                </div>
+
+                <div style="margin-top: 20px">
+                    <canvas id="graficoRazao" height="80"></canvas>
                 </div>
             </section>
 
@@ -61,27 +82,18 @@
                         required
                     />
 
-                    <div class="row">
-                        <div>
-                            <label>Limite Gás Bom (Até):</label>
-                            <input
-                                type="number"
-                                step="0.01"
-                                id="limiteGasBom"
-                                value="0.95"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label>Limite Gás Alerta (Até):</label>
-                            <input
-                                type="number"
-                                step="0.01"
-                                id="limiteGasAlerta"
-                                value="0.90"
-                                required
-                            />
-                        </div>
+                    <div style="margin-bottom: 15px">
+                        <label
+                            >Razão Aceitável (Gás/Kg) - Acima disso =
+                            Apodrecendo:</label
+                        >
+                        <input
+                            type="number"
+                            step="0.1"
+                            id="limiteGas"
+                            value="5.0"
+                            required
+                        />
                     </div>
 
                     <div class="botoes-form">
@@ -103,6 +115,30 @@
             <section class="card lista-crud">
                 <h2>Perfis Salvos (LocalStorage)</h2>
                 <ul id="listaConfigs"></ul>
+            </section>
+
+            <section class="card" style="grid-column: 1 / -1">
+                <h2>Histórico de Registros (A cada 30s)</h2>
+                <div style="max-height: 250px; overflow-y: auto">
+                    <table
+                        style="
+                            width: 100%;
+                            text-align: left;
+                            border-collapse: collapse;
+                        "
+                    >
+                        <thead>
+                            <tr style="border-bottom: 2px solid #ccc">
+                                <th>Hora</th>
+                                <th>Fruta</th>
+                                <th>Peso (kg)</th>
+                                <th>Razão Gás</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaLogs"></tbody>
+                    </table>
+                </div>
             </section>
         </main>
 
